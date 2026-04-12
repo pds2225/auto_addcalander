@@ -12,14 +12,14 @@ st.title("📅 AI 일정 자동 등록")
 api_key = st.secrets["OPENAI_API_KEY"]
 client = OpenAI(api_key=api_key)
 
+KO_DAYS = ["월", "화", "수", "목", "금", "토", "일"]
+
 # ── 세션 초기화 ────────────────────────────────────────
 for key, default in {
     "input_text": "",
     "events": [],
     "registered": False,
     "auto_open_done": False,
-    "kakao_url": None,
-    "share_warning": False,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -28,6 +28,15 @@ for key, default in {
 # ── 유틸 함수 ──────────────────────────────────────────
 def validate_gcal_date(date_str):
     return bool(re.match(r"^\d{8}T\d{6}$", str(date_str)))
+
+
+def fmt(date_str):
+    try:
+        dt = datetime.strptime(date_str, "%Y%m%dT%H%M%S")
+        day_ko = KO_DAYS[dt.weekday()]
+        return dt.strftime(f"%m/%d({day_ko}) %H:%M")
+    except Exception:
+        return date_str
 
 
 def process_text(text):
@@ -67,7 +76,6 @@ def process_text(text):
 - 해당 날짜에 해당하는 세션/과목만 포함
 - "1일차" 또는 "2일차" 등 날짜 표시 첫 줄에 포함
 - 준비물, 유의사항 등 공통 정보는 모든 날짜 이벤트에 포함
-- 세부 시간표가 있으면 시간 순서대로 정리
 
 [날짜 형식]
 - 반드시 YYYYMMDDTHHMMSS 형식만 사용
@@ -110,50 +118,11 @@ def build_calendar_url(event):
     )
 
 
-def fmt(date_str):
-    try:
-        return datetime.strptime(date_str, "%Y%m%dT%H%M%S").strftime("%m/%d(%a) %H:%M")
-    except Exception:
-        return date_str
-
-
-def on_share_click():
-    """공유 버튼 콜백 – 선택된 일정으로 카카오톡 URL 생성"""
-    events = st.session_state.events
-    selected = [
-        e for i, e in enumerate(events)
-        if st.session_state.get(f"share_{i}", False)
-    ]
-    if not selected:
-        st.session_state.share_warning = True
-        st.session_state.kakao_url = None
-        return
-
-    st.session_state.share_warning = False
-    lines = ["📅 일정 공유\n"]
-    for e in selected:
-        lines.append(e.get("title", ""))
-        lines.append(f"📅 {fmt(e['start_date'])} ~ {fmt(e['end_date'])}")
-        if e.get("location"):
-            lines.append(f"📍 {e['location']}")
-        lines.append("")
-
-    share_text = "\n".join(lines).strip()
-    st.session_state.kakao_url = (
-        f"kakaotalk://msg/send?text={urllib.parse.quote(share_text)}"
-    )
-
-
 def clear_all():
     st.session_state.input_text = ""
     st.session_state.events = []
     st.session_state.registered = False
     st.session_state.auto_open_done = False
-    st.session_state.kakao_url = None
-    st.session_state.share_warning = False
-    # 체크박스 초기화
-    for i in range(20):
-        st.session_state.pop(f"share_{i}", None)
 
 
 # ══════════════════════════════════════════════════════
@@ -173,8 +142,6 @@ if st.button("일정 분석", use_container_width=True):
                 st.session_state.events = events
                 st.session_state.registered = True
                 st.session_state.auto_open_done = False
-                st.session_state.kakao_url = None
-                st.session_state.share_warning = False
             except Exception as e:
                 st.error("처리 중 오류가 발생했습니다. 텍스트를 다시 확인해 주세요.")
                 st.write(e)
@@ -197,7 +164,7 @@ if st.session_state.registered and st.session_state.events:
 
     st.markdown("---")
     st.success(f"✅ {len(events)}개 일정 등록 완료!")
-    st.caption("내용이 틀렸으면 [수정하기]를 눌러 구글 캘린더에서 직접 수정하세요.")
+    st.caption("내용이 틀렸으면 [수정]을 눌러 구글 캘린더에서 직접 수정하세요.")
 
     # ── 등록된 일정 카드 ──────────────────────────────
     for i, event in enumerate(events):
@@ -205,9 +172,9 @@ if st.session_state.registered and st.session_state.events:
             left, right = st.columns([5, 1])
             with left:
                 st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp; {fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
+                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
                 if event.get("location"):
-                    st.markdown(f"📍 &nbsp; {event['location']}")
+                    st.markdown(f"📍 &nbsp;{event['location']}")
                 if event.get("details"):
                     with st.expander("📝 메모"):
                         st.text(event["details"])
@@ -215,10 +182,9 @@ if st.session_state.registered and st.session_state.events:
                 url = build_calendar_url(event)
                 st.markdown(
                     f'<a href="{url}" target="_blank">'
-                    f'<button style="background:#EA4335;color:white;'
-                    f'padding:8px 12px;border:none;border-radius:6px;'
-                    f'font-size:13px;font-weight:bold;cursor:pointer;margin-top:12px;">'
-                    f'수정</button></a>',
+                    f'<button style="background:#EA4335;color:white;padding:8px 12px;'
+                    f'border:none;border-radius:6px;font-size:13px;font-weight:bold;'
+                    f'cursor:pointer;margin-top:12px;">수정</button></a>',
                     unsafe_allow_html=True,
                 )
 
@@ -228,42 +194,126 @@ if st.session_state.registered and st.session_state.events:
             url = build_calendar_url(event)
             st.markdown(
                 f'<a href="{url}" target="_blank">'
-                f'<button style="width:100%;background:#34A853;color:white;'
-                f'padding:10px;border:none;border-radius:8px;font-size:14px;'
-                f'font-weight:bold;margin-bottom:6px;cursor:pointer;">'
-                f'🗓️ 일정 {i+1} 직접 열기</button></a>',
+                f'<button style="width:100%;background:#34A853;color:white;padding:10px;'
+                f'border:none;border-radius:8px;font-size:14px;font-weight:bold;'
+                f'margin-bottom:6px;cursor:pointer;">🗓️ 일정 {i+1} 직접 열기</button></a>',
                 unsafe_allow_html=True,
             )
 
-    # ── 공유 영역 ─────────────────────────────────────
+    # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
     st.subheader("📤 공유하기")
-    st.caption("공유할 일정을 선택하세요.")
 
-    for i, event in enumerate(events):
-        label = f"일정 {i+1}  ·  {fmt(event['start_date'])}  ·  {event.get('title', '')}"
-        st.checkbox(label, key=f"share_{i}", value=False)
+    # 공유용 이벤트 데이터 (제목/날짜/장소만)
+    share_events = json.dumps([
+        {
+            "title": e.get("title", ""),
+            "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
+            "location": e.get("location", ""),
+        }
+        for e in events
+    ], ensure_ascii=False)
 
-    st.button(
-        "공유 일정 선택 완료",
-        on_click=on_share_click,
-        use_container_width=True,
-    )
+    component_height = 80 + len(events) * 64 + 100
 
-    if st.session_state.share_warning:
-        st.warning("공유할 일정을 1개 이상 선택해 주세요.")
+    share_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 4px 2px; }}
+  .item {{
+    display: flex; align-items: center;
+    padding: 10px 6px; border-bottom: 1px solid #eee;
+  }}
+  .item input[type=checkbox] {{
+    width: 20px; height: 20px; margin-right: 12px;
+    cursor: pointer; flex-shrink: 0; accent-color: #4285F4;
+  }}
+  .item label {{ font-size: 14px; line-height: 1.5; cursor: pointer; }}
+  .item label .sub {{ font-size: 12px; color: #888; }}
+  .kakao-btn {{
+    display: block; width: 100%; margin-top: 14px;
+    background: #FEE500; color: #3C1E1E;
+    padding: 14px; border: none; border-radius: 8px;
+    font-size: 16px; font-weight: bold; cursor: pointer;
+    letter-spacing: -0.3px;
+  }}
+  #msg {{
+    margin-top: 10px; font-size: 13px; color: #555;
+    white-space: pre-wrap; line-height: 1.6;
+  }}
+</style>
+</head>
+<body>
+<div id="list"></div>
+<button class="kakao-btn" onclick="doShare()">💬 카카오톡으로 공유하기</button>
+<p id="msg"></p>
+<script>
+var events = {share_events};
 
-    # 카카오톡 버튼: 공유 선택 완료 후 표시
-    if st.session_state.kakao_url:
-        st.markdown(
-            f'<a href="{st.session_state.kakao_url}">'
-            f'<button style="width:100%;background:#FEE500;color:#3C1E1E;'
-            f'padding:15px;border:none;border-radius:8px;font-size:16px;'
-            f'font-weight:bold;cursor:pointer;margin-top:4px;">'
-            f'💬 카카오톡으로 공유하기</button></a>',
-            unsafe_allow_html=True,
-        )
-        st.caption("카카오톡이 열리면 받는 사람을 선택해서 보내세요.")
+var list = document.getElementById('list');
+events.forEach(function(e, i) {{
+  var div = document.createElement('div');
+  div.className = 'item';
+  div.innerHTML =
+    '<input type="checkbox" id="c' + i + '" checked>' +
+    '<label for="c' + i + '">' + e.title +
+    '<br><span class="sub">' + e.date +
+    (e.location ? ' · ' + e.location : '') +
+    '</span></label>';
+  list.appendChild(div);
+}});
+
+async function doShare() {{
+  var lines = ['📅 일정 공유\\n'];
+  var hasSelected = false;
+  events.forEach(function(e, i) {{
+    if (document.getElementById('c' + i).checked) {{
+      hasSelected = true;
+      lines.push(e.title);
+      lines.push('📅 ' + e.date);
+      if (e.location) lines.push('📍 ' + e.location);
+      lines.push('');
+    }}
+  }});
+
+  if (!hasSelected) {{
+    document.getElementById('msg').textContent = '⚠️ 공유할 일정을 선택해 주세요.';
+    return;
+  }}
+
+  var text = lines.join('\\n').trim();
+
+  /* 1순위: Web Share API (안드로이드 네이티브 공유창 → 카카오톡 선택 가능) */
+  if (navigator.share) {{
+    try {{
+      await navigator.share({{ text: text }});
+      document.getElementById('msg').textContent = '';
+      return;
+    }} catch(e) {{
+      if (e.name === 'AbortError') return;
+    }}
+  }}
+
+  /* 2순위: 클립보드 복사 */
+  try {{
+    await navigator.clipboard.writeText(text);
+    document.getElementById('msg').textContent =
+      '✅ 클립보드에 복사됐습니다!\\n카카오톡을 열고 붙여넣기 하세요.';
+  }} catch(e) {{
+    document.getElementById('msg').textContent =
+      '아래 내용을 직접 복사하세요:\\n\\n' + text;
+  }}
+}}
+</script>
+</body>
+</html>
+"""
+
+    components.html(share_html, height=component_height)
 
     st.markdown("---")
     st.button("새 일정 입력", on_click=clear_all, use_container_width=True)
