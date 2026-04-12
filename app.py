@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime
 from openai import OpenAI
 import json
@@ -13,6 +14,10 @@ client = OpenAI(api_key=api_key)
 
 if "input_text" not in st.session_state:
     st.session_state.input_text = ""
+if "events" not in st.session_state:
+    st.session_state.events = []
+if "auto_open_done" not in st.session_state:
+    st.session_state.auto_open_done = False
 
 def validate_gcal_date(date_str):
     return bool(re.match(r"^\d{8}T\d{6}$", str(date_str)))
@@ -75,8 +80,8 @@ def process_text(text):
     )
 
     data = json.loads(response.choices[0].message.content)
-
     events = data.get("events", [])
+
     if not events:
         raise ValueError("일정을 추출하지 못했습니다. 텍스트를 다시 확인해 주세요.")
 
@@ -108,66 +113,106 @@ def build_calendar_url(event):
 def format_display_date(date_str):
     try:
         dt = datetime.strptime(date_str, "%Y%m%dT%H%M%S")
-        return dt.strftime("%Y-%m-%d %H:%M")
+        return dt.strftime("%m/%d(%a) %H:%M")
     except Exception:
         return date_str
 
-def clear_text():
+def clear_all():
     st.session_state.input_text = ""
+    st.session_state.events = []
+    st.session_state.auto_open_done = False
 
+# ── 입력 영역 ──────────────────────────────────────────
 user_input = st.text_area(
     "일정 내용을 입력하세요",
     key="input_text",
     placeholder="복사한 텍스트를 붙여넣으세요."
 )
 
-if st.button("일정 파싱 및 캘린더 열기"):
+if st.button("일정 등록", type="primary", use_container_width=True):
     if user_input.strip():
         with st.spinner("AI 분석 중..."):
             try:
                 events = process_text(user_input)
-
-                st.subheader(f"추출된 일정 ({len(events)}개)")
-
-                for i, event in enumerate(events):
-                    st.markdown(f"---")
-                    st.markdown(f"**일정 {i+1}**")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f"**제목:** {event.get('title', '')}")
-                        st.markdown(f"**시작:** {format_display_date(event['start_date'])}")
-                        st.markdown(f"**종료:** {format_display_date(event['end_date'])}")
-                    with col2:
-                        if event.get("location"):
-                            st.markdown(f"**장소:** {event['location']}")
-                        if event.get("details"):
-                            st.markdown(f"**메모:**")
-                            st.text(event["details"])
-
-                    url = build_calendar_url(event)
-                    html_button = f"""
-                    <a href="{url}" target="_blank">
-                        <button style="
-                            width:100%;
-                            background-color:#4285F4;
-                            color:white;
-                            padding:14px;
-                            border:none;
-                            border-radius:8px;
-                            font-size:15px;
-                            font-weight:bold;
-                            margin-bottom:6px;
-                            cursor:pointer;">
-                            🗓️ 일정 {i+1} 캘린더에 저장
-                        </button>
-                    </a>
-                    """
-                    st.markdown(html_button, unsafe_allow_html=True)
-
-                st.markdown("---")
-                st.success(f"✅ {len(events)}개 일정 분석 완료!")
-                st.button("초기화 및 새 일정 입력", on_click=clear_text)
-
+                st.session_state.events = events
+                st.session_state.auto_open_done = False
             except Exception as e:
                 st.error("처리 중 오류가 발생했습니다. 텍스트를 다시 확인해 주세요.")
                 st.write(e)
+    else:
+        st.warning("텍스트를 입력해 주세요.")
+
+# ── 결과 영역 ──────────────────────────────────────────
+if st.session_state.events:
+    events = st.session_state.events
+
+    # 최초 1회만 자동으로 구글 캘린더 탭 오픈
+    if not st.session_state.auto_open_done:
+        urls = [build_calendar_url(e) for e in events]
+        js_opens = "\n".join([f'window.open("{url}", "_blank");' for url in urls])
+        components.html(f"<script>{js_opens}</script>", height=1)
+        st.session_state.auto_open_done = True
+
+    st.success(f"✅ {len(events)}개 일정을 캘린더에 등록했습니다.")
+
+    # 팝업 차단 대비 수동 버튼
+    for i, event in enumerate(events):
+        url = build_calendar_url(event)
+        label = f"{format_display_date(event['start_date'])} ~ {format_display_date(event['end_date'])}"
+        fallback = f"""
+        <a href="{url}" target="_blank">
+            <button style="
+                width:100%;
+                background-color:#34A853;
+                color:white;
+                padding:10px;
+                border:none;
+                border-radius:8px;
+                font-size:14px;
+                font-weight:bold;
+                margin-bottom:6px;
+                cursor:pointer;">
+                🗓️ 일정 {i+1} 직접 열기 &nbsp;|&nbsp; {label}
+            </button>
+        </a>
+        """
+        st.markdown(fallback, unsafe_allow_html=True)
+
+    st.caption("팝업이 차단된 경우 위 버튼을 직접 눌러주세요.")
+
+    # ── 공유 기능 ──────────────────────────────────────
+    st.markdown("---")
+    st.subheader("📤 일정 공유")
+    st.caption("공유할 일정을 선택하면 카카오톡 등으로 보낼 수 있는 링크를 생성합니다.")
+
+    share_selections = []
+    for i, event in enumerate(events):
+        label = f"일정 {i+1}  |  {format_display_date(event['start_date'])}  {event.get('title', '')}"
+        checked = st.checkbox(label, value=False, key=f"share_{i}")
+        share_selections.append(checked)
+
+    if st.button("공유 링크 생성", use_container_width=True):
+        selected = [e for e, s in zip(events, share_selections) if s]
+        if selected:
+            lines = ["📅 일정을 공유합니다\n"]
+            for event in selected:
+                lines.append(f"▶ {event.get('title', '')}")
+                lines.append(f"  {format_display_date(event['start_date'])} ~ {format_display_date(event['end_date'])}")
+                if event.get("location"):
+                    lines.append(f"  📍 {event['location']}")
+                if event.get("details"):
+                    for line in event["details"].splitlines():
+                        lines.append(f"  {line}")
+                lines.append(f"  🔗 구글캘린더 바로추가: {build_calendar_url(event)}")
+                lines.append("")
+            share_text = "\n".join(lines)
+            st.text_area(
+                "아래 내용을 복사해서 공유하세요",
+                value=share_text,
+                height=300
+            )
+        else:
+            st.warning("공유할 일정을 1개 이상 선택해 주세요.")
+
+    st.markdown("---")
+    st.button("초기화 및 새 일정 입력", on_click=clear_all, use_container_width=True)
