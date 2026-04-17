@@ -1,12 +1,14 @@
+import json
+import os
+import re
+import subprocess
+import urllib.parse
+from datetime import datetime
+
 import streamlit as st
 import streamlit.components.v1 as components
-from datetime import datetime
 from openai import OpenAI
-import json
-import urllib.parse
-import re
-import os
-import subprocess
+
 from date_utils import normalize_date_ranges
 
 st.set_page_config(page_title="Omni-Sync Mobile", layout="centered")
@@ -187,6 +189,35 @@ def build_ics_content(event):
     )
 
 
+def render_event_cards(events, selected_platforms):
+    for i, event in enumerate(events):
+        with st.container(border=True):
+            left, right = st.columns([5, 1])
+            with left:
+                st.markdown(f"**{event.get('title', '')}**")
+                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
+                if event.get("location"):
+                    st.markdown(f"📍 &nbsp;{event['location']}")
+                if event.get("details"):
+                    with st.expander("📝 메모"):
+                        st.text(event["details"])
+            with right:
+                if "구글 캘린더" in selected_platforms:
+                    st.link_button(
+                        "구글 등록",
+                        build_calendar_url(event),
+                        use_container_width=True,
+                    )
+                if "카카오 캘린더(.ics)" in selected_platforms:
+                    st.download_button(
+                        "카카오 등록(.ics)",
+                        data=build_ics_content(event),
+                        file_name=f"event_{i+1}.ics",
+                        mime="text/calendar",
+                        use_container_width=True,
+                    )
+
+
 def clear_all():
     st.session_state.input_text = ""
     st.session_state.events = []
@@ -224,64 +255,6 @@ if st.session_state.registered and st.session_state.events:
 
     st.markdown("---")
     st.success(f"✅ {len(events)}개 일정 등록 완료!")
-if st.session_state.registered and st.session_state.events:
-    events = st.session_state.events
-
-    st.markdown("---")
-    st.success(f"✅ {len(events)}개 일정 등록 완료!")
-    selected_platforms = st.multiselect(
-        "등록할 캘린더를 선택하세요",
-        options=["구글 캘린더", "카카오 캘린더(.ics)"],
-        default=["구글 캘린더"],
-        help="카카오는 .ics 파일 다운로드 후 카카오 캘린더에서 가져오기로 등록할 수 있습니다.",
-    )
-    st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
-
-    for i, event in enumerate(events):
-        with st.container(border=True):
-            left, right = st.columns([5, 1])
-            with left:
-                st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
-                if event.get("location"):
-                    st.markdown(f"📍 &nbsp;{event['location']}")
-                if event.get("details"):
-                    with st.expander("📝 메모"):
-                        st.text(event["details"])
-            with right:
-                if "구글 캘린더" in selected_platforms:
-                    st.link_button(
-                        "구글 등록",
-                        build_calendar_url(event),
-                        use_container_width=True,
-                    )
-                if "카카오 캘린더(.ics)" in selected_platforms:
-                    st.download_button(
-                        "카카오 등록(.ics)",
-                        data=build_ics_content(event),
-                        file_name=f"event_{i+1}.ics",
-                        mime="text/calendar",
-                        use_container_width=True,
-                    )
-
-    # ── 등록된 일정 카드 ──────────────────────────────
-    for i, event in enumerate(events):
-        with st.container(border=True):
-            left, right = st.columns([5, 1])
-            with left:
-                st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
-                if event.get("location"):
-                    st.markdown(f"📍 &nbsp;{event['location']}")
-                if event.get("details"):
-                    with st.expander("📝 메모"):
-                        st.text(event["details"])
-            with right:
-if st.session_state.registered and st.session_state.events:
-    events = st.session_state.events
-
-    st.markdown("---")
-    st.success(f"✅ {len(events)}개 일정 등록 완료!")
     selected_platforms = st.multiselect(
         "등록할 캘린더를 선택하세요",
         options=["구글 캘린더", "카카오 캘린더(.ics)"],
@@ -291,46 +264,24 @@ if st.session_state.registered and st.session_state.events:
     st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
 
     # ── 등록된 일정 카드 ──────────────────────────────
-    for i, event in enumerate(events):
-        with st.container(border=True):
-            left, right = st.columns([5, 1])
-            with left:
-                st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
-                if event.get("location"):
-                    st.markdown(f"📍 &nbsp;{event['location']}")
-                if event.get("details"):
-                    with st.expander("📝 메모"):
-                        st.text(event["details"])
-            with right:
-                if "구글 캘린더" in selected_platforms:
-                    st.link_button(
-                        "구글 등록",
-                        build_calendar_url(event),
-                        use_container_width=True,
-                    )
-                if "카카오 캘린더(.ics)" in selected_platforms:
-                    st.download_button(
-                        "카카오 등록(.ics)",
-                        data=build_ics_content(event),
-                        file_name=f"event_{i+1}.ics",
-                        mime="text/calendar",
-                        use_container_width=True,
-                    )
+    render_event_cards(events, selected_platforms)
 
     # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
     st.subheader("📤 공유하기")
 
     # 공유용 이벤트 데이터 (제목/날짜/장소만)
-    share_events = json.dumps([
-        {
-            "title": e.get("title", ""),
-            "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
-            "location": e.get("location", ""),
-        }
-        for e in events
-    ], ensure_ascii=False)
+    share_events = json.dumps(
+        [
+            {
+                "title": e.get("title", ""),
+                "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
+                "location": e.get("location", ""),
+            }
+            for e in events
+        ],
+        ensure_ascii=False,
+    )
 
     component_height = 80 + len(events) * 64 + 100
 
@@ -367,7 +318,7 @@ if st.session_state.registered and st.session_state.events:
 </head>
 <body>
 <div id="list"></div>
-<button class="kakao-btn" onclick="doShare()">💬 카카오톡으로 공유하기</button>
+<button class="kakao-btn" onclick="doShare()">💬 카카오톡 공유하기 (실패 시 자동 복사)</button>
 <p id="msg"></p>
 <script>
 var events = {share_events};
@@ -404,27 +355,57 @@ async function doShare() {{
   }}
 
   var text = lines.join('\\n').trim();
+  var msg = document.getElementById('msg');
 
-  /* 1순위: Web Share API (안드로이드 네이티브 공유창 → 카카오톡 선택 가능) */
-  if (navigator.share) {{
+  async function copyToClipboard(value) {{
     try {{
-      await navigator.share({{ text: text }});
-      document.getElementById('msg').textContent = '';
-      return;
-    }} catch(e) {{
-      if (e.name === 'AbortError') return;
+      if (navigator.clipboard && window.isSecureContext) {{
+        await navigator.clipboard.writeText(value);
+      }} else {{
+        var ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }}
+      msg.textContent = '✅ 복사 완료!\\n카카오톡을 열고 붙여넣기 하세요.';
+      return true;
+    }} catch (copyErr) {{
+      msg.textContent = '아래 내용을 직접 복사하세요:\\n\\n' + value;
+      return false;
     }}
   }}
 
-  /* 2순위: 클립보드 복사 */
+  // 모바일 공유가 불안정한 환경(웹뷰/브라우저 정책) 대비: canShare로 선검증
+  var canNativeShare = false;
   try {{
-    await navigator.clipboard.writeText(text);
-    document.getElementById('msg').textContent =
-      '✅ 클립보드에 복사됐습니다!\\n카카오톡을 열고 붙여넣기 하세요.';
-  }} catch(e) {{
-    document.getElementById('msg').textContent =
-      '아래 내용을 직접 복사하세요:\\n\\n' + text;
+    canNativeShare =
+      !!navigator.share &&
+      (!navigator.canShare || navigator.canShare({{ title: '일정 공유', text: text }}));
+  }} catch (e) {{
+    canNativeShare = false;
   }}
+
+  if (canNativeShare) {{
+    try {{
+      await navigator.share({{ title: '일정 공유', text: text }});
+      msg.textContent = '✅ 공유되었습니다.';
+      return;
+    }} catch (shareErr) {{
+      if (shareErr && shareErr.name === 'AbortError') {{
+        msg.textContent = '공유가 취소되어 복사 모드로 전환합니다.';
+      }} else {{
+        msg.textContent = '공유 실패로 복사 모드로 전환합니다.';
+      }}
+    }}
+  }}
+
+  await copyToClipboard(text);
 }}
 </script>
 </body>
