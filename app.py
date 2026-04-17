@@ -5,9 +5,40 @@ from openai import OpenAI
 import json
 import urllib.parse
 import re
+import os
+import subprocess
+from date_utils import normalize_date_ranges
 
 st.set_page_config(page_title="Omni-Sync Mobile", layout="centered")
 st.title("📅 AI 일정 자동 등록")
+
+
+def get_build_version():
+    # Streamlit Cloud/GitHub 배포 환경에서 커밋 SHA를 우선 사용
+    for key in ["GITHUB_SHA", "COMMIT_SHA", "RENDER_GIT_COMMIT"]:
+        if os.getenv(key):
+            return os.getenv(key)[:7]
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+BUILD_VERSION = get_build_version()
+st.caption(f"빌드 버전: {BUILD_VERSION}")
+
+# 배포 버전이 바뀌면 URL 쿼리 버전을 맞춰 자동 새로고침(수동 clear cache/rerun 최소화)
+try:
+    query_version = st.query_params.get("v")
+    if query_version != BUILD_VERSION:
+        st.query_params["v"] = BUILD_VERSION
+        st.rerun()
+except Exception:
+    pass
 
 api_key = st.secrets["OPENAI_API_KEY"]
 client = OpenAI(api_key=api_key)
@@ -19,7 +50,6 @@ for key, default in {
     "input_text": "",
     "events": [],
     "registered": False,
-    "auto_open_done": False,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -40,6 +70,7 @@ def fmt(date_str):
 
 
 def process_text(text):
+    normalized_text = normalize_date_ranges(text)
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prompt = f"""
 현재 시간은 {current_time} (KST) 입니다.
@@ -67,6 +98,8 @@ def process_text(text):
 
 [날짜 분리 규칙]
 - 다일 행사는 날짜별로 각각 1개씩 이벤트 생성
+- 기간 표기(예: 2026-05-01~2026-05-03)는 시작일과 종료일을 반드시 구분해서 해석
+- 시작일과 종료일이 다르면 같은 날짜로 만들지 말 것
 - 각 이벤트의 start_date: 해당 날짜의 도착시간 또는 첫 세션 시작시간
 - 각 이벤트의 end_date: 해당 날짜의 마지막 세션 종료시간 또는 퇴실시간
 - 도착/퇴실 시간이 명시된 경우 그 시간을 사용
@@ -83,7 +116,7 @@ def process_text(text):
 - JSON 외 텍스트 절대 출력 금지
 
 텍스트:
-{text}
+{normalized_text}
 """
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -118,11 +151,46 @@ def build_calendar_url(event):
     )
 
 
+def escape_ics_text(value):
+    if not value:
+        return ""
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace(",", "\\,")
+        .replace(";", "\\;")
+    )
+
+
+def build_ics_content(event):
+    uid = f"{event.get('start_date', '')}-{abs(hash(event.get('title', 'event')))}@omni-sync"
+    title = escape_ics_text(event.get("title", "새 일정"))
+    details = escape_ics_text(event.get("details", ""))
+    location = escape_ics_text(event.get("location", ""))
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    return (
+        "BEGIN:VCALENDAR\n"
+        "VERSION:2.0\n"
+        "PRODID:-//OmniSync//AutoCalendar//KO\n"
+        "CALSCALE:GREGORIAN\n"
+        "BEGIN:VEVENT\n"
+        f"UID:{uid}\n"
+        f"DTSTAMP:{now_utc}\n"
+        f"DTSTART;TZID=Asia/Seoul:{event['start_date']}\n"
+        f"DTEND;TZID=Asia/Seoul:{event['end_date']}\n"
+        f"SUMMARY:{title}\n"
+        f"DESCRIPTION:{details}\n"
+        f"LOCATION:{location}\n"
+        "END:VEVENT\n"
+        "END:VCALENDAR\n"
+    )
+
+
 def clear_all():
     st.session_state.input_text = ""
     st.session_state.events = []
     st.session_state.registered = False
-    st.session_state.auto_open_done = False
 
 
 # ══════════════════════════════════════════════════════
@@ -134,14 +202,13 @@ user_input = st.text_area(
     placeholder="복사한 텍스트를 붙여넣으세요.",
 )
 
-if st.button("일정 분석", use_container_width=True):
+if st.button("일정등록", use_container_width=True):
     if user_input.strip():
         with st.spinner("AI 분석 중..."):
             try:
                 events = process_text(user_input)
                 st.session_state.events = events
                 st.session_state.registered = True
-                st.session_state.auto_open_done = False
             except Exception as e:
                 st.error("처리 중 오류가 발생했습니다. 텍스트를 다시 확인해 주세요.")
                 st.write(e)
@@ -155,16 +222,15 @@ if st.button("일정 분석", use_container_width=True):
 if st.session_state.registered and st.session_state.events:
     events = st.session_state.events
 
-    # 최초 1회 구글 캘린더 탭 자동 오픈
-    if not st.session_state.auto_open_done:
-        urls = [build_calendar_url(e) for e in events]
-        js_opens = "\n".join([f'window.open("{u}", "_blank");' for u in urls])
-        components.html(f"<script>{js_opens}</script>", height=1)
-        st.session_state.auto_open_done = True
-
     st.markdown("---")
     st.success(f"✅ {len(events)}개 일정 등록 완료!")
-    st.caption("내용이 틀렸으면 [수정]을 눌러 구글 캘린더에서 직접 수정하세요.")
+    selected_platforms = st.multiselect(
+        "등록할 캘린더를 선택하세요",
+        options=["구글 캘린더", "카카오 캘린더(.ics)"],
+        default=["구글 캘린더"],
+        help="카카오는 .ics 파일 다운로드 후 카카오 캘린더에서 가져오기로 등록할 수 있습니다.",
+    )
+    st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
 
     # ── 등록된 일정 카드 ──────────────────────────────
     for i, event in enumerate(events):
@@ -179,26 +245,20 @@ if st.session_state.registered and st.session_state.events:
                     with st.expander("📝 메모"):
                         st.text(event["details"])
             with right:
-                url = build_calendar_url(event)
-                st.markdown(
-                    f'<a href="{url}" target="_blank">'
-                    f'<button style="background:#EA4335;color:white;padding:8px 12px;'
-                    f'border:none;border-radius:6px;font-size:13px;font-weight:bold;'
-                    f'cursor:pointer;margin-top:12px;">수정</button></a>',
-                    unsafe_allow_html=True,
-                )
-
-    # 팝업 차단 대비
-    with st.expander("팝업이 차단된 경우 여기를 누르세요"):
-        for i, event in enumerate(events):
-            url = build_calendar_url(event)
-            st.markdown(
-                f'<a href="{url}" target="_blank">'
-                f'<button style="width:100%;background:#34A853;color:white;padding:10px;'
-                f'border:none;border-radius:8px;font-size:14px;font-weight:bold;'
-                f'margin-bottom:6px;cursor:pointer;">🗓️ 일정 {i+1} 직접 열기</button></a>',
-                unsafe_allow_html=True,
-            )
+                if "구글 캘린더" in selected_platforms:
+                    st.link_button(
+                        "구글 등록",
+                        build_calendar_url(event),
+                        use_container_width=True,
+                    )
+                if "카카오 캘린더(.ics)" in selected_platforms:
+                    st.download_button(
+                        "카카오 등록(.ics)",
+                        data=build_ics_content(event),
+                        file_name=f"event_{i+1}.ics",
+                        mime="text/calendar",
+                        use_container_width=True,
+                    )
 
     # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
