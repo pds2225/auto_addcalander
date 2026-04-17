@@ -1,12 +1,14 @@
+import json
+import os
+import re
+import subprocess
+import urllib.parse
+from datetime import datetime
+
 import streamlit as st
 import streamlit.components.v1 as components
-from datetime import datetime
 from openai import OpenAI
-import json
-import urllib.parse
-import re
-import os
-import subprocess
+
 from date_utils import normalize_date_ranges
 
 st.set_page_config(page_title="Omni-Sync Mobile", layout="centered")
@@ -269,14 +271,17 @@ if st.session_state.registered and st.session_state.events:
     st.subheader("📤 공유하기")
 
     # 공유용 이벤트 데이터 (제목/날짜/장소만)
-    share_events = json.dumps([
-        {
-            "title": e.get("title", ""),
-            "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
-            "location": e.get("location", ""),
-        }
-        for e in events
-    ], ensure_ascii=False)
+    share_events = json.dumps(
+        [
+            {
+                "title": e.get("title", ""),
+                "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
+                "location": e.get("location", ""),
+            }
+            for e in events
+        ],
+        ensure_ascii=False,
+    )
 
     component_height = 80 + len(events) * 64 + 100
 
