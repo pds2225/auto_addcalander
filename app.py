@@ -224,6 +224,11 @@ if st.session_state.registered and st.session_state.events:
 
     st.markdown("---")
     st.success(f"✅ {len(events)}개 일정 등록 완료!")
+if st.session_state.registered and st.session_state.events:
+    events = st.session_state.events
+
+    st.markdown("---")
+    st.success(f"✅ {len(events)}개 일정 등록 완료!")
     selected_platforms = st.multiselect(
         "등록할 캘린더를 선택하세요",
         options=["구글 캘린더", "카카오 캘린더(.ics)"],
@@ -258,7 +263,61 @@ if st.session_state.registered and st.session_state.events:
                         file_name=f"event_{i+1}.ics",
                         mime="text/calendar",
                         use_container_width=True,
+                    )main
+
+    # ── 등록된 일정 카드 ──────────────────────────────
+    for i, event in enumerate(events):
+        with st.container(border=True):
+            left, right = st.columns([5, 1])
+            with left:
+                st.markdown(f"**{event.get('title', '')}**")
+                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
+                if event.get("location"):
+                    st.markdown(f"📍 &nbsp;{event['location']}")
+                if event.get("details"):
+                    with st.expander("📝 메모"):
+                        st.text(event["details"])
+            with right:
+if st.session_state.registered and st.session_state.events:
+    events = st.session_state.events
+
+    st.markdown("---")
+    st.success(f"✅ {len(events)}개 일정 등록 완료!")
+    selected_platforms = st.multiselect(
+        "등록할 캘린더를 선택하세요",
+        options=["구글 캘린더", "카카오 캘린더(.ics)"],
+        default=["구글 캘린더"],
+        help="카카오는 .ics 파일 다운로드 후 카카오 캘린더에서 가져오기로 등록할 수 있습니다.",
+    )
+    st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
+
+    # ── 등록된 일정 카드 ──────────────────────────────
+    for i, event in enumerate(events):
+        with st.container(border=True):
+            left, right = st.columns([5, 1])
+            with left:
+                st.markdown(f"**{event.get('title', '')}**")
+                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
+                if event.get("location"):
+                    st.markdown(f"📍 &nbsp;{event['location']}")
+                if event.get("details"):
+                    with st.expander("📝 메모"):
+                        st.text(event["details"])
+            with right:
+                if "구글 캘린더" in selected_platforms:
+                    st.link_button(
+                        "구글 등록",
+                        build_calendar_url(event),
+                        use_container_width=True,
                     )
+                if "카카오 캘린더(.ics)" in selected_platforms:
+                    st.download_button(
+                        "카카오 등록(.ics)",
+                        data=build_ics_content(event),
+                        file_name=f"event_{i+1}.ics",
+                        mime="text/calendar",
+                        use_container_width=True,
+                    ) main
 
     # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
