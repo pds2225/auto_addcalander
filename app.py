@@ -317,7 +317,7 @@ if st.session_state.registered and st.session_state.events:
                         file_name=f"event_{i+1}.ics",
                         mime="text/calendar",
                         use_container_width=True,
-                    ) main
+                    )
 
     # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
