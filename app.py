@@ -263,7 +263,7 @@ if st.session_state.registered and st.session_state.events:
                         file_name=f"event_{i+1}.ics",
                         mime="text/calendar",
                         use_container_width=True,
-                    )main
+                    )
 
     # ── 등록된 일정 카드 ──────────────────────────────
     for i, event in enumerate(events):
