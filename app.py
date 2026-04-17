@@ -1,12 +1,14 @@
+import json
+import os
+import re
+import subprocess
+import urllib.parse
+from datetime import datetime
+
 import streamlit as st
 import streamlit.components.v1 as components
-from datetime import datetime
 from openai import OpenAI
-import json
-import urllib.parse
-import re
-import os
-import subprocess
+
 from date_utils import normalize_date_ranges
 
 st.set_page_config(page_title="Omni-Sync Mobile", layout="centered")
@@ -187,6 +189,35 @@ def build_ics_content(event):
     )
 
 
+def render_event_cards(events, selected_platforms):
+    for i, event in enumerate(events):
+        with st.container(border=True):
+            left, right = st.columns([5, 1])
+            with left:
+                st.markdown(f"**{event.get('title', '')}**")
+                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
+                if event.get("location"):
+                    st.markdown(f"📍 &nbsp;{event['location']}")
+                if event.get("details"):
+                    with st.expander("📝 메모"):
+                        st.text(event["details"])
+            with right:
+                if "구글 캘린더" in selected_platforms:
+                    st.link_button(
+                        "구글 등록",
+                        build_calendar_url(event),
+                        use_container_width=True,
+                    )
+                if "카카오 캘린더(.ics)" in selected_platforms:
+                    st.download_button(
+                        "카카오 등록(.ics)",
+                        data=build_ics_content(event),
+                        file_name=f"event_{i+1}.ics",
+                        mime="text/calendar",
+                        use_container_width=True,
+                    )
+
+
 def clear_all():
     st.session_state.input_text = ""
     st.session_state.events = []
@@ -224,64 +255,6 @@ if st.session_state.registered and st.session_state.events:
 
     st.markdown("---")
     st.success(f"✅ {len(events)}개 일정 등록 완료!")
-if st.session_state.registered and st.session_state.events:
-    events = st.session_state.events
-
-    st.markdown("---")
-    st.success(f"✅ {len(events)}개 일정 등록 완료!")
-    selected_platforms = st.multiselect(
-        "등록할 캘린더를 선택하세요",
-        options=["구글 캘린더", "카카오 캘린더(.ics)"],
-        default=["구글 캘린더"],
-        help="카카오는 .ics 파일 다운로드 후 카카오 캘린더에서 가져오기로 등록할 수 있습니다.",
-    )
-    st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
-
-    for i, event in enumerate(events):
-        with st.container(border=True):
-            left, right = st.columns([5, 1])
-            with left:
-                st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
-                if event.get("location"):
-                    st.markdown(f"📍 &nbsp;{event['location']}")
-                if event.get("details"):
-                    with st.expander("📝 메모"):
-                        st.text(event["details"])
-            with right:
-                if "구글 캘린더" in selected_platforms:
-                    st.link_button(
-                        "구글 등록",
-                        build_calendar_url(event),
-                        use_container_width=True,
-                    )
-                if "카카오 캘린더(.ics)" in selected_platforms:
-                    st.download_button(
-                        "카카오 등록(.ics)",
-                        data=build_ics_content(event),
-                        file_name=f"event_{i+1}.ics",
-                        mime="text/calendar",
-                        use_container_width=True,
-                    )
-
-    # ── 등록된 일정 카드 ──────────────────────────────
-    for i, event in enumerate(events):
-        with st.container(border=True):
-            left, right = st.columns([5, 1])
-            with left:
-                st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
-                if event.get("location"):
-                    st.markdown(f"📍 &nbsp;{event['location']}")
-                if event.get("details"):
-                    with st.expander("📝 메모"):
-                        st.text(event["details"])
-            with right:
-if st.session_state.registered and st.session_state.events:
-    events = st.session_state.events
-
-    st.markdown("---")
-    st.success(f"✅ {len(events)}개 일정 등록 완료!")
     selected_platforms = st.multiselect(
         "등록할 캘린더를 선택하세요",
         options=["구글 캘린더", "카카오 캘린더(.ics)"],
@@ -291,46 +264,24 @@ if st.session_state.registered and st.session_state.events:
     st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
 
     # ── 등록된 일정 카드 ──────────────────────────────
-    for i, event in enumerate(events):
-        with st.container(border=True):
-            left, right = st.columns([5, 1])
-            with left:
-                st.markdown(f"**{event.get('title', '')}**")
-                st.markdown(f"📅 &nbsp;{fmt(event['start_date'])} ~ {fmt(event['end_date'])}")
-                if event.get("location"):
-                    st.markdown(f"📍 &nbsp;{event['location']}")
-                if event.get("details"):
-                    with st.expander("📝 메모"):
-                        st.text(event["details"])
-            with right:
-                if "구글 캘린더" in selected_platforms:
-                    st.link_button(
-                        "구글 등록",
-                        build_calendar_url(event),
-                        use_container_width=True,
-                    )
-                if "카카오 캘린더(.ics)" in selected_platforms:
-                    st.download_button(
-                        "카카오 등록(.ics)",
-                        data=build_ics_content(event),
-                        file_name=f"event_{i+1}.ics",
-                        mime="text/calendar",
-                        use_container_width=True,
-                    )
+    render_event_cards(events, selected_platforms)
 
     # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
     st.subheader("📤 공유하기")
 
     # 공유용 이벤트 데이터 (제목/날짜/장소만)
-    share_events = json.dumps([
-        {
-            "title": e.get("title", ""),
-            "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
-            "location": e.get("location", ""),
-        }
-        for e in events
-    ], ensure_ascii=False)
+    share_events = json.dumps(
+        [
+            {
+                "title": e.get("title", ""),
+                "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
+                "location": e.get("location", ""),
+            }
+            for e in events
+        ],
+        ensure_ascii=False,
+    )
 
     component_height = 80 + len(events) * 64 + 100
 
