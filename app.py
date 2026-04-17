@@ -318,7 +318,7 @@ if st.session_state.registered and st.session_state.events:
 </head>
 <body>
 <div id="list"></div>
-<button class="kakao-btn" onclick="doShare()">💬 카카오톡으로 공유하기</button>
+<button class="kakao-btn" onclick="doShare()">💬 카카오톡 공유하기 (실패 시 자동 복사)</button>
 <p id="msg"></p>
 <script>
 var events = {share_events};
@@ -355,27 +355,57 @@ async function doShare() {{
   }}
 
   var text = lines.join('\\n').trim();
+  var msg = document.getElementById('msg');
 
-  /* 1순위: Web Share API (안드로이드 네이티브 공유창 → 카카오톡 선택 가능) */
-  if (navigator.share) {{
+  async function copyToClipboard(value) {{
     try {{
-      await navigator.share({{ text: text }});
-      document.getElementById('msg').textContent = '';
-      return;
-    }} catch(e) {{
-      if (e.name === 'AbortError') return;
+      if (navigator.clipboard && window.isSecureContext) {{
+        await navigator.clipboard.writeText(value);
+      }} else {{
+        var ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }}
+      msg.textContent = '✅ 복사 완료!\\n카카오톡을 열고 붙여넣기 하세요.';
+      return true;
+    }} catch (copyErr) {{
+      msg.textContent = '아래 내용을 직접 복사하세요:\\n\\n' + value;
+      return false;
     }}
   }}
 
-  /* 2순위: 클립보드 복사 */
+  // 모바일 공유가 불안정한 환경(웹뷰/브라우저 정책) 대비: canShare로 선검증
+  var canNativeShare = false;
   try {{
-    await navigator.clipboard.writeText(text);
-    document.getElementById('msg').textContent =
-      '✅ 클립보드에 복사됐습니다!\\n카카오톡을 열고 붙여넣기 하세요.';
-  }} catch(e) {{
-    document.getElementById('msg').textContent =
-      '아래 내용을 직접 복사하세요:\\n\\n' + text;
+    canNativeShare =
+      !!navigator.share &&
+      (!navigator.canShare || navigator.canShare({{ title: '일정 공유', text: text }}));
+  }} catch (e) {{
+    canNativeShare = false;
   }}
+
+  if (canNativeShare) {{
+    try {{
+      await navigator.share({{ title: '일정 공유', text: text }});
+      msg.textContent = '✅ 공유되었습니다.';
+      return;
+    }} catch (shareErr) {{
+      if (shareErr && shareErr.name === 'AbortError') {{
+        msg.textContent = '공유가 취소되어 복사 모드로 전환합니다.';
+      }} else {{
+        msg.textContent = '공유 실패로 복사 모드로 전환합니다.';
+      }}
+    }}
+  }}
+
+  await copyToClipboard(text);
 }}
 </script>
 </body>
