@@ -237,7 +237,6 @@ if st.session_state.registered and st.session_state.events:
     )
     st.caption("선택한 캘린더 방식으로 각 일정을 등록하세요.")
 
-    # ── 등록된 일정 카드 ──────────────────────────────
     for i, event in enumerate(events):
         with st.container(border=True):
             left, right = st.columns([5, 1])
