@@ -87,7 +87,8 @@ def process_text(text):
       "start_date": "YYYYMMDDTHHMMSS",
       "end_date": "YYYYMMDDTHHMMSS",
       "location": "장소",
-      "details": "세부 일정"
+      "details": "참석자 필요 정보 전체",
+      "details_brief": "핵심 요약 (100자 이내)"
     }}
   ]
 }}
@@ -110,6 +111,12 @@ def process_text(text):
 - 포함: 세션·과목·시간표, 장소 세부 정보(건물명·호실 등), 준비물, 유의사항, 문의처, 신청 방법, 지참 서류 등
 - 제외: 기관 소개·홍보 문구·행사 취지 설명 등 참석자 행동과 무관한 내용
 - 내용을 요약하거나 임의로 생략하지 말 것
+
+[details_brief 규칙]
+- details 내용을 100자 이내로 압축 요약
+- 우선순위: ① 주요 세션명·일정 흐름 ② 준비물·지참 서류 ③ 문의처
+- 한 줄 또는 글머리표 2~3개 이내로 작성
+- 구글 캘린더 메모란에 표시될 요약본
 
 [날짜 형식]
 - 반드시 YYYYMMDDTHHMMSS 형식만 사용
@@ -141,9 +148,9 @@ def process_text(text):
 
 
 def build_calendar_url(event):
-    # Google Calendar URL limit: Korean chars encode to ~9x length.
-    # Truncate raw details to 200 chars to keep total URL within ~2500 chars.
-    details = event.get('details', '')
+    # Use brief summary for URL to avoid Google Calendar 400 error from long URLs.
+    # Korean chars encode to ~9x length, so details_brief (≤100 chars) stays safe.
+    details = event.get('details_brief') or event.get('details', '')
     if len(details) > 200:
         details = details[:200] + '...'
     return (
