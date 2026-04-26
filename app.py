@@ -141,6 +141,11 @@ def process_text(text):
 
 
 def build_calendar_url(event):
+    # Google Calendar URL limit: Korean chars encode to ~9x length.
+    # Truncate raw details to 200 chars to keep total URL within ~2500 chars.
+    details = event.get('details', '')
+    if len(details) > 200:
+        details = details[:200] + '...'
     return (
         "https://calendar.google.com/calendar/render"
         "?action=TEMPLATE"
@@ -148,7 +153,7 @@ def build_calendar_url(event):
         f"&dates={event['start_date']}/{event['end_date']}"
         "&ctz=Asia%2FSeoul"
         f"&location={urllib.parse.quote(event.get('location', ''), safe='')}"
-        f"&details={urllib.parse.quote(event.get('details', ''), safe='')}"
+        f"&details={urllib.parse.quote(details, safe='')}"
     )
 
 
