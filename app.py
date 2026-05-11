@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -150,20 +150,43 @@ def process_text(text):
 def build_calendar_url(event):
     # Use brief summary for URL to avoid Google Calendar 400 error from long URLs.
     # Korean chars encode to ~9x length, so details_brief (≤100 chars) stays safe.
-    # src=primary hints Google Calendar mobile/web to create the event in the user's main calendar.
+    # /r/eventedit + calid=primary: forces "내 캘린더" on mobile (avoids "메모" calendar default).
     details = event.get('details_brief') or event.get('details', '')
     if len(details) > 200:
         details = details[:200] + '...'
     return (
-        "https://calendar.google.com/calendar/render"
-        "?action=TEMPLATE"
-        "&src=primary"
-        f"&text={urllib.parse.quote(event.get('title', '새 일정'), safe='')}"
+        "https://calendar.google.com/calendar/r/eventedit"
+        "?calid=primary"
+        f"&title={urllib.parse.quote(event.get('title', '새 일정'), safe='')}"
         f"&dates={event['start_date']}/{event['end_date']}"
         "&ctz=Asia%2FSeoul"
         f"&location={urllib.parse.quote(event.get('location', ''), safe='')}"
         f"&details={urllib.parse.quote(details, safe='')}"
     )
+
+
+def split_multiday_events(events):
+    result = []
+    for event in events:
+        try:
+            start = datetime.strptime(event['start_date'], "%Y%m%dT%H%M%S")
+            end = datetime.strptime(event['end_date'], "%Y%m%dT%H%M%S")
+        except (ValueError, KeyError):
+            result.append(event)
+            continue
+        if start.date() == end.date():
+            result.append(event)
+            continue
+        start_t = start.strftime("%H%M%S")
+        end_t = end.strftime("%H%M%S")
+        current = start.date()
+        while current <= end.date():
+            day_event = dict(event)
+            day_event['start_date'] = f"{current.strftime('%Y%m%d')}T{start_t}"
+            day_event['end_date'] = f"{current.strftime('%Y%m%d')}T{end_t}"
+            result.append(day_event)
+            current += timedelta(days=1)
+    return result
 
 
 def escape_ics_text(value):
@@ -250,7 +273,7 @@ if st.button("일정등록", use_container_width=True):
     if user_input.strip():
         with st.spinner("AI 분석 중..."):
             try:
-                events = process_text(user_input)
+                events = split_multiday_events(process_text(user_input))
                 st.session_state.events = events
                 st.session_state.registered = True
             except Exception as e:
