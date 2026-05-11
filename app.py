@@ -150,12 +150,14 @@ def process_text(text):
 def build_calendar_url(event):
     # Use brief summary for URL to avoid Google Calendar 400 error from long URLs.
     # Korean chars encode to ~9x length, so details_brief (≤100 chars) stays safe.
+    # src=primary hints Google Calendar mobile/web to create the event in the user's main calendar.
     details = event.get('details_brief') or event.get('details', '')
     if len(details) > 200:
         details = details[:200] + '...'
     return (
         "https://calendar.google.com/calendar/render"
         "?action=TEMPLATE"
+        "&src=primary"
         f"&text={urllib.parse.quote(event.get('title', '새 일정'), safe='')}"
         f"&dates={event['start_date']}/{event['end_date']}"
         "&ctz=Asia%2FSeoul"
