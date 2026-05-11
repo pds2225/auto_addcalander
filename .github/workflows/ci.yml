@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "main_*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint-and-install:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check app.py date_utils.py --select E,F,W --ignore E501
+
+      - name: Check import structure
+        run: python -c "import date_utils; print('date_utils OK')"
+
+  validate-date-utils:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run date_utils smoke test
+        run: |
+          python - <<'EOF'
+          from date_utils import normalize_date_ranges
+          result = normalize_date_ranges("2026-05-01~03")
+          assert "2026-05-01" in result and "2026-05-03" in result, f"Unexpected: {result}"
+          result2 = normalize_date_ranges("2026-05-28 ~ 06-02")
+          print("normalize_date_ranges OK:", result, "|", result2)
+          EOF
