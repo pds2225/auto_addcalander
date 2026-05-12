@@ -166,9 +166,10 @@ def build_calendar_url(event):
     if len(details) > 200:
         details = details[:200] + '...'
     return (
-        "https://calendar.google.com/calendar/r/eventedit"
-        "?calid=primary"
-        f"&title={urllib.parse.quote(event.get('title', '새 일정'), safe='')}"
+        "https://calendar.google.com/calendar/render"
+        "?action=TEMPLATE"
+        "&src=primary"
+        f"&text={urllib.parse.quote(event.get('title', '새 일정'), safe='')}"
         f"&dates={event['start_date']}/{event['end_date']}"
         "&ctz=Asia%2FSeoul"
         f"&location={urllib.parse.quote(event.get('location', ''), safe='')}"
