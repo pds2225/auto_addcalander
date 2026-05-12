@@ -214,27 +214,48 @@ def escape_ics_text(value):
 
 
 def build_ics_content(event):
-    uid = f"{event.get('start_date', '')}-{abs(hash(event.get('title', 'event')))}@omni-sync"
-    title = escape_ics_text(event.get("title", "새 일정"))
-    details = escape_ics_text(event.get("details", ""))
-    location = escape_ics_text(event.get("location", ""))
+    return build_ics_calendar_content([event])
+
+
+def build_ics_calendar_content(events):
     now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    return (
+    lines = [
         "BEGIN:VCALENDAR\n"
         "VERSION:2.0\n"
         "PRODID:-//OmniSync//AutoCalendar//KO\n"
         "CALSCALE:GREGORIAN\n"
-        "BEGIN:VEVENT\n"
-        f"UID:{uid}\n"
-        f"DTSTAMP:{now_utc}\n"
-        f"DTSTART;TZID=Asia/Seoul:{event['start_date']}\n"
-        f"DTEND;TZID=Asia/Seoul:{event['end_date']}\n"
-        f"SUMMARY:{title}\n"
-        f"DESCRIPTION:{details}\n"
-        f"LOCATION:{location}\n"
-        "END:VEVENT\n"
-        "END:VCALENDAR\n"
-    )
+    ]
+    for event in events:
+        uid = f"{event.get('start_date', '')}-{abs(hash(event.get('title', 'event')))}@omni-sync"
+        title = escape_ics_text(event.get("title", "새 일정"))
+        details = escape_ics_text(event.get("details", ""))
+        location = escape_ics_text(event.get("location", ""))
+        lines.extend(
+            [
+                "BEGIN:VEVENT\n",
+                f"UID:{uid}\n",
+                f"DTSTAMP:{now_utc}\n",
+                f"DTSTART;TZID=Asia/Seoul:{event['start_date']}\n",
+                f"DTEND;TZID=Asia/Seoul:{event['end_date']}\n",
+                f"SUMMARY:{title}\n",
+                f"DESCRIPTION:{details}\n",
+                f"LOCATION:{location}\n",
+                "END:VEVENT\n",
+            ]
+        )
+    lines.append("END:VCALENDAR\n")
+    return "".join(lines)
+
+
+def make_ics_filename(title, index=None):
+    base = re.sub(r"[^\w가-힣-]+", "_", str(title or "calendar").strip(), flags=re.UNICODE)
+    base = re.sub(r"_+", "_", base).strip("_")
+    if not base:
+        base = "calendar"
+    base = base[:40].strip("_") or "calendar"
+    if index is not None:
+        return f"{index:02d}_{base}.ics"
+    return f"{base}.ics"
 
 
 def render_event_cards(events, selected_platforms):
@@ -260,7 +281,7 @@ def render_event_cards(events, selected_platforms):
                     st.download_button(
                         "카카오 등록(.ics)",
                         data=build_ics_content(event),
-                        file_name=f"event_{i+1}.ics",
+                        file_name=make_ics_filename(event.get("title", ""), i + 1),
                         mime="text/calendar",
                         use_container_width=True,
                     )
@@ -317,8 +338,35 @@ if st.session_state.registered and st.session_state.events:
     # ── 공유 영역 (완전 클라이언트 사이드) ───────────────
     st.markdown("---")
     st.subheader("📤 공유하기")
+    st.info(
+        "카카오톡에는 일정 내용 텍스트를 먼저 공유하세요.\n"
+        "캘린더 등록이 필요한 사람에게는 아래 .ics 파일도 함께 전달하면 됩니다.\n"
+        "받는 사람은 .ics 파일을 열어 카카오 캘린더 또는 휴대폰 캘린더에 직접 저장할 수 있습니다."
+    )
 
-    # 공유용 이벤트 데이터 (제목/날짜/장소만)
+    share_options = {
+        i: f"{event.get('title', '새 일정')} · {fmt(event['start_date'])}"
+        for i, event in enumerate(events)
+    }
+    selected_share_indices = st.multiselect(
+        "공유할 일정을 선택하세요",
+        options=list(share_options.keys()),
+        default=list(share_options.keys()),
+        format_func=lambda idx: share_options[idx],
+    )
+    selected_share_events = [events[i] for i in selected_share_indices]
+
+    st.download_button(
+        "선택된 전체 일정 .ics 다운로드",
+        data=build_ics_calendar_content(selected_share_events),
+        file_name="selected_all_calendar.ics",
+        mime="text/calendar",
+        use_container_width=True,
+        disabled=not selected_share_events,
+        help="공유 대상으로 선택한 일정을 하나의 .ics 파일로 내려받습니다.",
+    )
+
+    # 공유용 이벤트 데이터: 메모와 연도는 제외하고 다운로드 전 확인 가능한 핵심 정보만 포함
     share_events = json.dumps(
         [
             {
@@ -326,12 +374,12 @@ if st.session_state.registered and st.session_state.events:
                 "date": f"{fmt(e['start_date'])} ~ {fmt(e['end_date'])}",
                 "location": e.get("location", ""),
             }
-            for e in events
+            for e in selected_share_events
         ],
         ensure_ascii=False,
     )
 
-    component_height = 80 + len(events) * 64 + 100
+    component_height = 80 + len(selected_share_events) * 64 + 100
 
     share_html = f"""
 <!DOCTYPE html>
@@ -385,15 +433,15 @@ events.forEach(function(e, i) {{
 }});
 
 async function doShare() {{
-  var lines = ['📅 일정 공유\\n'];
+  var lines = ['일정 공유'];
   var hasSelected = false;
   events.forEach(function(e, i) {{
     if (document.getElementById('c' + i).checked) {{
       hasSelected = true;
-      lines.push(e.title);
-      lines.push('📅 ' + e.date);
-      if (e.location) lines.push('📍 ' + e.location);
       lines.push('');
+      lines.push('[' + e.title + ']');
+      lines.push('일시: ' + e.date);
+      if (e.location) lines.push('장소: ' + e.location);
     }}
   }});
 
@@ -402,7 +450,11 @@ async function doShare() {{
     return;
   }}
 
-  var text = lines.join('\\n').trim();
+  lines.push('');
+  lines.push('캘린더 등록 파일:');
+  lines.push('첨부된 .ics 파일을 열어 캘린더에 저장하세요.');
+
+  var text = lines.join('\\n');
   var msg = document.getElementById('msg');
 
   async function copyToClipboard(value) {{
