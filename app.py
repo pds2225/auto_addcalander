@@ -341,7 +341,8 @@ if st.session_state.registered and st.session_state.events:
     st.info(
         "카카오톡에는 일정 내용 텍스트를 먼저 공유하세요.\n"
         "캘린더 등록이 필요한 사람에게는 아래 .ics 파일도 함께 전달하면 됩니다.\n"
-        "받는 사람은 .ics 파일을 열어 카카오 캘린더 또는 휴대폰 캘린더에 직접 저장할 수 있습니다."
+        "받는 사람은 .ics 파일을 열어 카카오 캘린더 또는 휴대폰 캘린더에 직접 저장할 수 있습니다.\n"
+        "이미 등록한 일정을 다시 가져오면 중복 등록될 수 있으니, 새로 공유할 일정만 선택해 다운로드하세요."
     )
 
     share_options = {
@@ -357,13 +358,13 @@ if st.session_state.registered and st.session_state.events:
     selected_share_events = [events[i] for i in selected_share_indices]
 
     st.download_button(
-        "선택된 전체 일정 .ics 다운로드",
+        "선택한 일정만 .ics 다운로드",
         data=build_ics_calendar_content(selected_share_events),
-        file_name="selected_all_calendar.ics",
+        file_name="selected_calendar_events.ics",
         mime="text/calendar",
         use_container_width=True,
         disabled=not selected_share_events,
-        help="공유 대상으로 선택한 일정을 하나의 .ics 파일로 내려받습니다.",
+        help="체크한 일정만 하나의 .ics 파일로 내려받습니다.",
     )
 
     # 공유용 이벤트 데이터: 메모와 연도는 제외하고 다운로드 전 확인 가능한 핵심 정보만 포함
