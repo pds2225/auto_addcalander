@@ -29,6 +29,11 @@
 
 ## 대기 중인 작업
 
+- [ ] TASK-008: [기획보류] 업무 일정 우선 히스토리 분류 기반 추출 고도화 (Issue #17, 로컬/자체서버 전용)
+  - category 키워드 판단 → event_history.json 저장 → 같은 category 최대 3개 프롬프트 삽입
+  - work 입력 시 personal 히스토리 제외, 중복 검증 금지
+  - 구현 프롬프트: Issue #17 본문 참고
+
 - [ ] Streamlit Cloud 배포 설정 확인 및 문서화
 - [ ] `date_utils.py` 엣지케이스 단위 테스트 추가 (`tests/test_date_utils.py`)
 - [ ] OpenAI 프롬프트 버전 관리 분리 (별도 파일 또는 상수)
